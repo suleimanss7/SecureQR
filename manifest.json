@@ -1,0 +1,21 @@
+{
+  "name": "SecureQR - Encrypted QR Generator",
+  "short_name": "SecureQR",
+  "description": "Generate and decode AES-256 encrypted QR codes",
+  "start_url": "/SecureQR/",
+  "display": "standalone",
+  "background_color": "#1a3a1a",
+  "theme_color": "#1a3a1a",
+  "icons": [
+    {
+      "src": "https://cdn.jsdelivr.net/gh/twitter/twemoji@14/assets/72x72/1f510.png",
+      "sizes": "72x72",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn.jsdelivr.net/gh/twitter/twemoji@14/assets/72x72/1f510.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
