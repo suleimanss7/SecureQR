@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#1a3a1a"/>
+  <link rel="manifest" href="manifest.json"/>
   <title>SecureQR — Encrypted QR Code Generator</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
@@ -13,54 +15,118 @@
       <div class="logo">🔐</div>
       <div>
         <h1>SecureQR</h1>
-        <p>Generate and decode password-protected QR codes</p>
+        <p>AES-256 encrypted QR codes — 100% in your browser</p>
       </div>
+      <div id="pwa-badge" class="pwa-badge" style="display:none"
+           title="Offline Ready">📶 Offline Ready</div>
     </div>
   </header>
 
   <div class="tabs">
-    <button class="tab active" onclick="showTab('generator', event)">
-      🔒 Generate QR
+    <button class="tab active" onclick="showTab('generator',event)">
+      🔒 Generate
     </button>
-    <button class="tab" onclick="showTab('validator', event)">
-      🔓 Decode QR
+    <button class="tab" onclick="showTab('validator',event)">
+      🔓 Decode
     </button>
   </div>
 
-  <!-- GENERATOR -->
+  <!-- ══ GENERATOR ══════════════════════════════════════════ -->
   <section id="generator" class="section active">
     <h2>Generate a Secure QR Code</h2>
     <p class="section-desc">
-      Your message will be encrypted with AES-256 before the QR
-      code is created. Only someone with the correct password
-      can decode it.
+      Your message is encrypted with AES-256-GCM before the QR code
+      is created. Only someone with the correct password can read it.
     </p>
 
     <label>Message or URL</label>
-    <textarea
-      id="gen-message"
+    <textarea id="gen-message"
       placeholder="Type your secret message or paste a URL..."
-      oninput="updateCounter()"
-      maxlength="300">
-    </textarea>
+      oninput="updateCounter()" maxlength="300"></textarea>
     <div class="counter-row">
       <span id="char-counter">0 / 300</span>
     </div>
 
     <label>Encryption Password</label>
     <div class="password-wrap">
-      <input
-        type="password"
-        id="gen-password"
+      <input type="password" id="gen-password"
         placeholder="Enter a strong password"
-        oninput="checkStrength(this.value)"
-      />
-      <button class="eye-btn" onclick="toggleVisibility('gen-password', this)">👁</button>
+        oninput="checkStrength(this.value)"/>
+      <button class="eye-btn"
+        onclick="toggleVis('gen-password',this)">👁</button>
     </div>
     <div class="strength-bar-wrap">
       <div class="strength-bar" id="strength-bar"></div>
     </div>
     <span class="strength-label" id="strength-label"></span>
+
+    <!-- Duress toggle -->
+    <div class="toggle-row">
+      <label class="toggle-label">
+        <input type="checkbox" id="duress-toggle"
+          onchange="toggleDuress()"/>
+        <span class="toggle-switch"></span>
+        Enable Duress (Decoy) Password
+      </label>
+      <span class="toggle-hint">
+        A second password shows a fake message instead of an error
+      </span>
+    </div>
+
+    <div id="duress-fields" class="duress-fields" style="display:none">
+      <label>Decoy Message <span class="hint">(shown when decoy password is used)</span></label>
+      <textarea id="decoy-message"
+        placeholder="Enter a harmless decoy message..."
+        maxlength="300"></textarea>
+      <label>Decoy Password</label>
+      <div class="password-wrap">
+        <input type="password" id="decoy-password"
+          placeholder="Enter decoy password"/>
+        <button class="eye-btn"
+          onclick="toggleVis('decoy-password',this)">👁</button>
+      </div>
+    </div>
+
+    <!-- Customisation panel -->
+    <div class="toggle-row" style="margin-top:16px">
+      <label class="toggle-label">
+        <input type="checkbox" id="custom-toggle"
+          onchange="toggleCustom()"/>
+        <span class="toggle-switch"></span>
+        Customise QR Code Appearance
+      </label>
+    </div>
+
+    <div id="custom-fields" class="custom-fields" style="display:none">
+      <div class="custom-grid">
+        <div>
+          <label class="small-label">Foreground</label>
+          <input type="color" id="color-dark" value="#1a3a1a"/>
+        </div>
+        <div>
+          <label class="small-label">Background</label>
+          <input type="color" id="color-light" value="#ffffff"/>
+        </div>
+        <div>
+          <label class="small-label">Error Correction</label>
+          <select id="error-level">
+            <option value="L">Low (L)</option>
+            <option value="M">Medium (M)</option>
+            <option value="Q">Quartile (Q)</option>
+            <option value="H" selected>High (H)</option>
+          </select>
+        </div>
+        <div>
+          <label class="small-label">Center Logo</label>
+          <select id="center-logo">
+            <option value="none">None</option>
+            <option value="lock" selected>🔐 Lock</option>
+            <option value="shield">🛡️ Shield</option>
+            <option value="star">⭐ Star</option>
+          </select>
+        </div>
+      </div>
+    </div>
 
     <button class="btn-primary" onclick="generateQR()">
       🔒 Encrypt &amp; Generate QR
@@ -68,44 +134,65 @@
 
     <div id="gen-status"></div>
     <div id="qr-output"></div>
-    <button
-      id="download-btn"
-      class="btn-secondary"
-      style="display:none"
-      onclick="downloadQR()">
-      ⬇ Download QR Code
-    </button>
+
+    <div id="export-buttons" style="display:none">
+      <button class="btn-secondary" onclick="downloadPNG()">
+        ⬇ Download PNG
+      </button>
+      <button class="btn-secondary" onclick="downloadSVG()">
+        ⬇ Download SVG
+      </button>
+    </div>
   </section>
 
-  <!-- VALIDATOR -->
+  <!-- ══ VALIDATOR ══════════════════════════════════════════ -->
   <section id="validator" class="section">
     <h2>Decode a Secure QR Code</h2>
     <p class="section-desc">
-      Upload a QR code generated by SecureQR, enter the password
-      used during encryption, and the original message will be revealed.
+      Upload an image or use your camera to scan a SecureQR code,
+      then enter the password to decrypt it.
     </p>
 
-    <label>Upload QR Code Image</label>
-    <div class="upload-area" onclick="document.getElementById('qr-upload').click()">
-      <div class="upload-icon">📤</div>
-      <p id="upload-label">Click to select a QR code image</p>
-      <input
-        type="file"
-        id="qr-upload"
-        accept="image/*"
-        onchange="readQR(event)"
-        style="display:none"
-      />
+    <div class="scan-tabs">
+      <button class="scan-tab active" onclick="showScanTab('upload',this)">
+        📁 Upload Image
+      </button>
+      <button class="scan-tab" onclick="showScanTab('camera',this)">
+        📷 Use Camera
+      </button>
     </div>
 
-    <label>Decryption Password</label>
+    <!-- Upload tab -->
+    <div id="scan-upload">
+      <div class="upload-area"
+        onclick="document.getElementById('qr-upload').click()">
+        <div class="upload-icon">📤</div>
+        <p id="upload-label">Click to select a QR code image</p>
+        <input type="file" id="qr-upload" accept="image/*"
+          onchange="readQR(event)" style="display:none"/>
+      </div>
+    </div>
+
+    <!-- Camera tab -->
+    <div id="scan-camera" style="display:none">
+      <div class="camera-wrap">
+        <video id="camera-video" autoplay playsinline
+          muted></video>
+        <canvas id="camera-canvas" style="display:none"></canvas>
+        <div class="camera-overlay">
+          <div class="scan-frame"></div>
+        </div>
+      </div>
+      <button class="btn-secondary" id="cam-btn"
+        onclick="toggleCamera()">▶ Start Camera</button>
+    </div>
+
+    <label style="margin-top:20px">Decryption Password</label>
     <div class="password-wrap">
-      <input
-        type="password"
-        id="val-password"
-        placeholder="Enter the decryption password"
-      />
-      <button class="eye-btn" onclick="toggleVisibility('val-password', this)">👁</button>
+      <input type="password" id="val-password"
+        placeholder="Enter the decryption password"/>
+      <button class="eye-btn"
+        onclick="toggleVis('val-password',this)">👁</button>
     </div>
 
     <button class="btn-primary" onclick="decodeQR()">
@@ -116,8 +203,8 @@
   </section>
 
   <footer>
-    <p>🔐 SecureQR &mdash; All encryption is performed locally in your
-    browser. No data is ever sent to a server.</p>
+    <p>🔐 SecureQR &mdash; All encryption runs locally.
+    Nothing is ever sent to a server.</p>
   </footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
