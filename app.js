@@ -1,4 +1,15 @@
 // ─────────────────────────────────────────
+// PWA SERVICE WORKER
+// ─────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js')
+    .then(() => {
+      document.getElementById('pwa-badge').style.display = 'flex';
+    })
+    .catch(() => {});
+}
+
+// ─────────────────────────────────────────
 // TAB SWITCHING
 // ─────────────────────────────────────────
 function showTab(tab, event) {
@@ -8,150 +19,125 @@ function showTab(tab, event) {
     .forEach(t => t.classList.remove('active'));
   document.getElementById(tab).classList.add('active');
   event.target.classList.add('active');
+  stopCamera();
+}
+
+function showScanTab(tab, btn) {
+  document.querySelectorAll('.scan-tab')
+    .forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('scan-upload').style.display =
+    tab === 'upload' ? 'block' : 'none';
+  document.getElementById('scan-camera').style.display =
+    tab === 'camera' ? 'block' : 'none';
+  if (tab !== 'camera') stopCamera();
 }
 
 // ─────────────────────────────────────────
-// CHARACTER COUNTER
+// UI HELPERS
 // ─────────────────────────────────────────
 function updateCounter() {
-  const textarea = document.getElementById('gen-message');
-  const counter  = document.getElementById('char-counter');
-  const len = textarea.value.length;
-  counter.textContent = len + ' / 300';
-  counter.className = '';
-  if (len >= 300) counter.classList.add('at-limit');
-  else if (len >= 240) counter.classList.add('near-limit');
+  const len = document.getElementById('gen-message').value.length;
+  const el  = document.getElementById('char-counter');
+  el.textContent = len + ' / 300';
+  el.className = len >= 300 ? 'full' : len >= 240 ? 'near' : '';
 }
 
-// ─────────────────────────────────────────
-// PASSWORD VISIBILITY TOGGLE
-// ─────────────────────────────────────────
-function toggleVisibility(id, btn) {
-  const input = document.getElementById(id);
-  if (input.type === 'password') {
-    input.type = 'text';
-    btn.textContent = '🙈';
-  } else {
-    input.type = 'password';
-    btn.textContent = '👁';
-  }
+function toggleVis(id, btn) {
+  const el = document.getElementById(id);
+  el.type  = el.type === 'password' ? 'text' : 'password';
+  btn.textContent = el.type === 'password' ? '👁' : '🙈';
 }
 
-// ─────────────────────────────────────────
-// PASSWORD STRENGTH INDICATOR
-// ─────────────────────────────────────────
-function checkStrength(password) {
+function toggleDuress() {
+  const on = document.getElementById('duress-toggle').checked;
+  document.getElementById('duress-fields').style.display =
+    on ? 'block' : 'none';
+}
+
+function toggleCustom() {
+  const on = document.getElementById('custom-toggle').checked;
+  document.getElementById('custom-fields').style.display =
+    on ? 'block' : 'none';
+}
+
+function checkStrength(pw) {
   const bar   = document.getElementById('strength-bar');
   const label = document.getElementById('strength-label');
-  if (!password) {
-    bar.style.width = '0%';
-    label.textContent = '';
-    return;
-  }
-  let score = 0;
-  if (password.length >= 8)  score++;
-  if (password.length >= 12) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-
+  if (!pw) { bar.style.width = '0'; label.textContent = ''; return; }
+  let s = 0;
+  if (pw.length >= 8)  s++;
+  if (pw.length >= 12) s++;
+  if (/[A-Z]/.test(pw)) s++;
+  if (/[0-9]/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
   const levels = [
-    { pct: '20%', color: '#e74c3c', text: 'Very weak',  col: '#e74c3c' },
-    { pct: '40%', color: '#e67e22', text: 'Weak',       col: '#e67e22' },
-    { pct: '60%', color: '#f1c40f', text: 'Fair',       col: '#b7950b' },
-    { pct: '80%', color: '#2ecc71', text: 'Strong',     col: '#1e8449' },
-    { pct: '100%',color: '#27ae60', text: 'Very strong',col: '#1a5c33' },
+    ['20%','#e74c3c','Very weak','#c0392b'],
+    ['40%','#e67e22','Weak','#d35400'],
+    ['60%','#f1c40f','Fair','#9a7d0a'],
+    ['80%','#2ecc71','Strong','#1e8449'],
+    ['100%','#27ae60','Very strong','#1a5c33'],
   ];
-  const lvl = levels[Math.min(score, 4)];
-  bar.style.width      = lvl.pct;
-  bar.style.background = lvl.color;
-  label.textContent    = lvl.text;
-  label.style.color    = lvl.col;
+  const [w,c,t,lc] = levels[Math.min(s,4)];
+  bar.style.width      = w;
+  bar.style.background = c;
+  label.textContent    = t;
+  label.style.color    = lc;
 }
 
 // ─────────────────────────────────────────
-// HELPERS
+// CRYPTO HELPERS
 // ─────────────────────────────────────────
-function bufferToBase64(buffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+function toB64(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+function fromB64(b64) {
+  const s = atob(b64);
+  const b = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+  return b.buffer;
 }
 
-function base64ToBuffer(base64) {
-  const binary = atob(base64);
-  const bytes  = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-
-function showStatus(id, html, type = '') {
-  const el = document.getElementById(id);
-  el.innerHTML = '';
-  const div = document.createElement('div');
-  div.className = type;
-  div.innerHTML = html;
-  el.appendChild(div);
-}
-
-// ─────────────────────────────────────────
-// KEY DERIVATION (PBKDF2)
-// ─────────────────────────────────────────
 async function deriveKey(password, salt) {
-  const encoder     = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveKey']
+  const km = await crypto.subtle.importKey(
+    'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
   );
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
+    { name:'PBKDF2', salt, iterations:100000, hash:'SHA-256' },
+    km,
+    { name:'AES-GCM', length:256 },
     false,
-    ['encrypt', 'decrypt']
+    ['encrypt','decrypt']
   );
 }
 
-// ─────────────────────────────────────────
-// ENCRYPT
-// ─────────────────────────────────────────
-async function encryptMessage(message, password) {
-  const encoder   = new TextEncoder();
-  const salt      = crypto.getRandomValues(new Uint8Array(16));
-  const iv        = crypto.getRandomValues(new Uint8Array(12));
-  const key       = await deriveKey(password, salt);
-  const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    encoder.encode(message)
+async function aesEncrypt(message, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKey(password, salt);
+  const ct   = await crypto.subtle.encrypt(
+    { name:'AES-GCM', iv }, key, enc.encode(message)
   );
-  const combined = new Uint8Array(
-    salt.byteLength + iv.byteLength + encrypted.byteLength
-  );
-  combined.set(salt, 0);
-  combined.set(iv,   salt.byteLength);
-  combined.set(new Uint8Array(encrypted), salt.byteLength + iv.byteLength);
-  return bufferToBase64(combined.buffer);
+  const out = new Uint8Array(28 + ct.byteLength);
+  out.set(salt, 0);
+  out.set(iv, 16);
+  out.set(new Uint8Array(ct), 28);
+  return toB64(out.buffer);
 }
 
-// ─────────────────────────────────────────
-// DECRYPT
-// ─────────────────────────────────────────
-async function decryptMessage(encryptedBase64, password) {
-  const data      = new Uint8Array(base64ToBuffer(encryptedBase64));
-  const salt      = data.slice(0, 16);
-  const iv        = data.slice(16, 28);
-  const encrypted = data.slice(28);
-  const key       = await deriveKey(password, salt);
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    encrypted
+async function aesDecrypt(b64, password) {
+  const data = new Uint8Array(fromB64(b64));
+  const salt = data.slice(0, 16);
+  const iv   = data.slice(16, 28);
+  const ct   = data.slice(28);
+  const key  = await deriveKey(password, salt);
+  const pt   = await crypto.subtle.decrypt(
+    { name:'AES-GCM', iv }, key, ct
   );
-  return new TextDecoder().decode(decrypted);
+  return dec.decode(pt);
 }
 
 // ─────────────────────────────────────────
@@ -160,114 +146,284 @@ async function decryptMessage(encryptedBase64, password) {
 async function generateQR() {
   const message  = document.getElementById('gen-message').value.trim();
   const password = document.getElementById('gen-password').value.trim();
-  const output   = document.getElementById('qr-output');
   const status   = document.getElementById('gen-status');
-  const dlBtn    = document.getElementById('download-btn');
+  const output   = document.getElementById('qr-output');
+  const exports  = document.getElementById('export-buttons');
 
-  // Reset
-  output.innerHTML  = '';
-  status.innerHTML  = '';
-  dlBtn.style.display = 'none';
+  output.innerHTML = '';
+  status.innerHTML = '';
+  exports.style.display = 'none';
 
-  // Validate
   if (!message) {
     status.innerHTML =
-      '<div class="msg-error">⚠ Please enter a message or URL.</div>';
+      '<div class="msg-err">⚠ Please enter a message.</div>';
     return;
   }
   if (!password) {
     status.innerHTML =
-      '<div class="msg-error">⚠ Please enter a password.</div>';
+      '<div class="msg-err">⚠ Please enter a password.</div>';
     return;
   }
   if (password.length < 6) {
     status.innerHTML =
-      '<div class="msg-error">⚠ Password must be at least 6 characters.</div>';
+      '<div class="msg-err">⚠ Password must be at least 6 characters.</div>';
     return;
   }
 
+  // Duress check
+  const duressOn = document.getElementById('duress-toggle').checked;
+  if (duressOn) {
+    const dp = document.getElementById('decoy-password').value.trim();
+    const dm = document.getElementById('decoy-message').value.trim();
+    if (!dp || !dm) {
+      status.innerHTML =
+        '<div class="msg-err">⚠ Enter a decoy message and decoy password.</div>';
+      return;
+    }
+    if (dp === password) {
+      status.innerHTML =
+        '<div class="msg-err">⚠ Decoy password must differ from real password.</div>';
+      return;
+    }
+  }
+
   status.innerHTML =
-    '<p class="status-encrypting">🔒 Encrypting your message...</p>';
+    '<p class="status-busy">🔒 Encrypting...</p>';
 
   try {
-    const encrypted = await encryptMessage(message, password);
+    let payload;
+
+    if (duressOn) {
+      const dp = document.getElementById('decoy-password').value.trim();
+      const dm = document.getElementById('decoy-message').value.trim();
+      const realEnc  = await aesEncrypt(message, password);
+      const decoyEnc = await aesEncrypt(dm, dp);
+      // Format: SQR2:REAL_B64|DECOY_B64
+      payload = 'SQR2:' + realEnc + '|' + decoyEnc;
+    } else {
+      const encrypted = await aesEncrypt(message, password);
+      payload = 'SQR1:' + encrypted;
+    }
+
     status.innerHTML = '';
 
+    // Get customisation options
+    const colorDark  = document.getElementById('color-dark')?.value  || '#1a3a1a';
+    const colorLight = document.getElementById('color-light')?.value || '#ffffff';
+    const errLevel   = document.getElementById('error-level')?.value || 'H';
+    const logo       = document.getElementById('center-logo')?.value || 'lock';
+
+    const levelMap = {
+      L: QRCode.CorrectLevel.L,
+      M: QRCode.CorrectLevel.M,
+      Q: QRCode.CorrectLevel.Q,
+      H: QRCode.CorrectLevel.H,
+    };
+
     new QRCode(output, {
-      text:         encrypted,
+      text:         payload,
       width:        260,
       height:       260,
-      colorDark:    '#1a3a1a',
-      colorLight:   '#ffffff',
-      correctLevel: QRCode.CorrectLevel.H
+      colorDark,
+      colorLight,
+      correctLevel: levelMap[errLevel] || QRCode.CorrectLevel.H,
     });
 
-    dlBtn.style.display = 'block';
+    // Add center logo overlay
+    if (logo !== 'none') {
+      setTimeout(() => addCenterLogo(logo, colorDark), 200);
+    }
+
+    exports.style.display = 'grid';
   } catch (err) {
     status.innerHTML =
-      '<div class="msg-error">❌ Encryption failed. Try a shorter message.</div>';
+      '<div class="msg-err">❌ Encryption failed. Try a shorter message.</div>';
     console.error(err);
   }
 }
 
 // ─────────────────────────────────────────
-// DOWNLOAD QR
+// CENTER LOGO
 // ─────────────────────────────────────────
-function downloadQR() {
+function addCenterLogo(type, bgColor) {
+  const canvas = document.querySelector('#qr-output canvas');
+  if (!canvas) return;
+  const ctx  = canvas.getContext('2d');
+  const size = canvas.width;
+  const cx   = size / 2;
+  const cy   = size / 2;
+  const r    = size * 0.1;
+  const icons = { lock:'🔐', shield:'🛡️', star:'⭐' };
+
+  // White circle background
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  // Border circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+  ctx.strokeStyle = bgColor;
+  ctx.lineWidth   = 2;
+  ctx.stroke();
+
+  // Emoji
+  ctx.font      = (r * 1.4) + 'px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(icons[type] || '🔐', cx, cy);
+}
+
+// ─────────────────────────────────────────
+// DOWNLOAD PNG
+// ─────────────────────────────────────────
+function downloadPNG() {
   const canvas = document.querySelector('#qr-output canvas');
   const img    = document.querySelector('#qr-output img');
-  let dataUrl;
-  if (canvas) dataUrl = canvas.toDataURL('image/png');
-  else if (img) dataUrl = img.src;
-  else return;
-
-  const link    = document.createElement('a');
-  link.href     = dataUrl;
-  link.download = 'SecureQR_' + Date.now() + '.png';
+  if (!canvas && !img) return;
+  const link      = document.createElement('a');
+  link.href       = canvas ? canvas.toDataURL('image/png') : img.src;
+  link.download   = 'SecureQR_' + Date.now() + '.png';
   link.click();
 }
 
 // ─────────────────────────────────────────
-// READ / SCAN QR IMAGE
+// DOWNLOAD SVG
+// ─────────────────────────────────────────
+function downloadSVG() {
+  const canvas = document.querySelector('#qr-output canvas');
+  if (!canvas) return;
+
+  const w    = canvas.width;
+  const h    = canvas.height;
+  const ctx  = canvas.getContext('2d');
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const size = 4; // SVG units per pixel
+
+  let rects = '';
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r = data[i], g = data[i+1], b = data[i+2];
+      const dark = (r + g + b) / 3 < 128;
+      if (dark) {
+        const hex = '#' + [r,g,b].map(v =>
+          v.toString(16).padStart(2,'0')).join('');
+        rects += `<rect x="${x*size}" y="${y*size}"
+          width="${size}" height="${size}" fill="${hex}"/>`;
+      }
+    }
+  }
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+  width="${w*size}" height="${h*size}"
+  viewBox="0 0 ${w*size} ${h*size}">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  ${rects}
+</svg>`;
+
+  const blob = new Blob([svg], { type:'image/svg+xml' });
+  const link = document.createElement('a');
+  link.href  = URL.createObjectURL(blob);
+  link.download = 'SecureQR_' + Date.now() + '.svg';
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+// ─────────────────────────────────────────
+// FILE UPLOAD SCAN
 // ─────────────────────────────────────────
 let scannedData = null;
 
 function readQR(event) {
-  const file    = event.target.files[0];
-  const output  = document.getElementById('decoded-output');
-  const label   = document.getElementById('upload-label');
+  const file   = event.target.files[0];
+  const output = document.getElementById('decoded-output');
+  const label  = document.getElementById('upload-label');
   if (!file) return;
-
   label.textContent = '📎 ' + file.name;
   scannedData = null;
   output.innerHTML = '';
 
   const reader = new FileReader();
-  reader.onload = function (e) {
+  reader.onload = e => {
     const img = new Image();
-    img.onload = function () {
-      const canvas  = document.createElement('canvas');
-      canvas.width  = img.width;
-      canvas.height = img.height;
-      const ctx     = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code      = jsQR(imageData.data, canvas.width, canvas.height);
-
-      if (code) {
-        scannedData = code.data;
+    img.onload = () => {
+      const c   = document.createElement('canvas');
+      c.width   = img.width;
+      c.height  = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+      const id  = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+      const qr  = jsQR(id.data, c.width, c.height);
+      if (qr) {
+        scannedData = qr.data;
         output.innerHTML =
-          '<div class="msg-scan-ok">✅ QR code scanned successfully. ' +
-          'Enter the password below to decrypt.</div>';
+          '<div class="msg-scan-ok">✅ QR scanned. Enter password to decrypt.</div>';
       } else {
         output.innerHTML =
-          '<div class="msg-error">❌ Could not read QR code. ' +
-          'Try a larger or clearer image.</div>';
+          '<div class="msg-err">❌ Could not read QR code. Try a clearer image.</div>';
       }
     };
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+// ─────────────────────────────────────────
+// CAMERA SCAN
+// ─────────────────────────────────────────
+let cameraStream  = null;
+let cameraTimer   = null;
+let cameraRunning = false;
+
+async function toggleCamera() {
+  if (cameraRunning) { stopCamera(); return; }
+  const btn   = document.getElementById('cam-btn');
+  const video = document.getElementById('camera-video');
+  const out   = document.getElementById('decoded-output');
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    });
+    video.srcObject = cameraStream;
+    cameraRunning   = true;
+    btn.textContent = '⏹ Stop Camera';
+    out.innerHTML   = '<div class="msg-scan-ok">📷 Point camera at a SecureQR code...</div>';
+    cameraTimer = setInterval(scanFrame, 300);
+  } catch (err) {
+    out.innerHTML =
+      '<div class="msg-err">❌ Camera access denied. Please allow camera permissions.</div>';
+  }
+}
+
+function scanFrame() {
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  if (!video.videoWidth) return;
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+  const id  = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const qr  = jsQR(id.data, canvas.width, canvas.height);
+  if (qr) {
+    scannedData = qr.data;
+    document.getElementById('decoded-output').innerHTML =
+      '<div class="msg-scan-ok">✅ QR detected! Enter password to decrypt.</div>';
+    stopCamera();
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  clearInterval(cameraTimer);
+  cameraRunning = false;
+  const btn = document.getElementById('cam-btn');
+  if (btn) btn.textContent = '▶ Start Camera';
 }
 
 // ─────────────────────────────────────────
@@ -279,38 +435,60 @@ async function decodeQR() {
 
   if (!scannedData) {
     output.innerHTML =
-      '<div class="msg-error">⚠ Please upload a QR code image first.</div>';
+      '<div class="msg-err">⚠ Please scan or upload a QR code first.</div>';
     return;
   }
   if (!password) {
     output.innerHTML =
-      '<div class="msg-error">⚠ Please enter the decryption password.</div>';
+      '<div class="msg-err">⚠ Please enter the decryption password.</div>';
     return;
   }
 
-  output.innerHTML =
-    '<p class="status-encrypting">🔓 Decrypting...</p>';
+  output.innerHTML = '<p class="status-busy">🔓 Decrypting...</p>';
 
   try {
-    const decrypted = await decryptMessage(scannedData, password);
+    let result;
+
+    if (scannedData.startsWith('SQR2:')) {
+      // Duress format: try real then decoy
+      const parts = scannedData.slice(5).split('|');
+      let decrypted = null;
+      for (const part of parts) {
+        try {
+          decrypted = await aesDecrypt(part, password);
+          break;
+        } catch (_) {}
+      }
+      if (decrypted === null) throw new Error('Wrong password');
+      result = decrypted;
+
+    } else if (scannedData.startsWith('SQR1:')) {
+      // Standard format
+      result = await aesDecrypt(scannedData.slice(5), password);
+
+    } else {
+      // Legacy format (no prefix)
+      result = await aesDecrypt(scannedData, password);
+    }
+
     output.innerHTML = `
-      <div class="msg-success">
+      <div class="msg-ok">
         <strong>✅ Decrypted Message:</strong>
-        ${escapeHtml(decrypted)}
+        ${escHtml(result)}
         <br/>
-        <button class="btn-copy" onclick="copyText('${escapeForAttr(decrypted)}', this)">
+        <button class="btn-copy"
+          onclick="copyText(${JSON.stringify(result)}, this)">
           📋 Copy to Clipboard
         </button>
       </div>`;
-  } catch (err) {
+  } catch {
     output.innerHTML =
-      '<div class="msg-error">❌ Wrong password or corrupted QR code. ' +
-      'Decryption failed.</div>';
+      '<div class="msg-err">❌ Wrong password or corrupted QR code.</div>';
   }
 }
 
 // ─────────────────────────────────────────
-// COPY TO CLIPBOARD
+// UTILITIES
 // ─────────────────────────────────────────
 function copyText(text, btn) {
   navigator.clipboard.writeText(text).then(() => {
@@ -319,16 +497,7 @@ function copyText(text, btn) {
   });
 }
 
-// ─────────────────────────────────────────
-// HELPERS: ESCAPE HTML
-// ─────────────────────────────────────────
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-function escapeForAttr(str) {
-  return str.replace(/'/g, "\\'").replace(/\n/g, ' ');
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
